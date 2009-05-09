@@ -19,7 +19,7 @@ use constant BLOG_URL   => q{http://blog.360.yahoo.com/blog/};
 use constant LOGIN_FORM => q{login_form};
 use constant LOGIN_URL  => q{https://login.yahoo.com/config/login_verify2?.intl=us&.done=http%3A%2F%2Fblog.360.yahoo.com%2Fblog%2F%3F.login%3D1&.src=360};
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 sub new {
     my ($class, $args) = @_;
@@ -217,10 +217,14 @@ sub get_blogpost_comments {
 
 # Gets all blog posts by a user
 sub get_blog_posts {
-    my ($self, $blog_page) = @_;
+    my ($self, $blog_page, %overrides) = @_;
 
     $blog_page ||= $self->blog_main_page();
     my $blog_info = $self->blog_info($blog_page);
+
+    for (keys %overrides) {
+        $blog_info->{$_} = $overrides{$_};
+    }
 
     my $link  = $blog_info->{link};
     my $start = $blog_info->{start};
@@ -367,6 +371,9 @@ WWW::Scraper::Yahoo360 - Yahoo 360 blogs old-fashioned crappy scraper
       password => 'mypassword',
   });
 
+  # First you have to login
+  $y360->login() or die "Login failed?";
+
   # High level blog information
   my $blog_info = $y360->blog_info();
 
@@ -396,9 +403,13 @@ B<Yahoo 360> account.
 
 This creates a new C<WWW::Scraper::Yahoo360> object, ready to scrape.
 
-=head2 C<blog_info()>
+=head2 C<blog_info([$blog_page])>
 
 Fetches high-level blog information for your Yahoo 360 blog.
+If a C<$blog_page> argument is supplied, the blog information is
+looked up inside the contents of that scalar. Otherwise it's fetched
+from the network. C<$blog_page> must contain a full HTML page string.
+
 Returns a hashref with the some/all the following information:
     
 =over 4
@@ -434,18 +445,20 @@ Title of the blog.
 
 Fetches the user's main blog page.
 Returns a string with the HTML page contents.
+This can be used in C<blog_info()> or C<get_blog_posts()>.
 
 =head2 C<blog_page_url($link, $start, $per_page, $count)>
 
 Builds the url to fetch a specific blog page.
 
-=head2 C<login()>
-
-Logs in to Yahoo service.
-
 =head2 C<dump()>
 
 Dumps last accessed page content to STDOUT
+
+=head2 C<login()>
+
+Logs in to Yahoo service.
+Returns a scalar that tells you if the login was successful or not.
 
 =head2 C<get_blog_comments(\@posts)>
 
@@ -458,10 +471,59 @@ Retrieves all comments to a single blog post.
 Wants a single C<$post> entry (hashref): one of the elements
 returned by C<get_blog_posts()>.
 
-=head2 C<get_blog_posts()>
+=head2 C<get_blog_posts([$blog_page, [%overrides]])>
 
-Gets all blog posts by a user.
+Gets all blog posts by a user. If C<$blog_page> is supplied, it looks
+for blog posts in that page only.
+
+C<%overrides> can be a set passed to override some of the properties
+about the blog to be scraped and parsed. To see the list of properties,
+look at C<blog_info()>.
+
 Returns an array of hashrefs, each one representing a blog post.
+Each post (hashref) should have the following keys:
+
+Example:
+
+	$y360 = WWW::Scraper::Yahoo360->new({
+		username => '...'
+		password => '...',
+	});
+
+	$y360->login() or die "Failed login";
+
+	# Fetch only the first blog post, no matter what
+	my $first_page = $y360->blog_main_page();
+	my $blog_posts = $y360->get_blog_posts($first_page, count=>1);
+
+=over 4
+
+=item C<comments>
+
+Number of comments to this blog post
+
+=item C<description>
+
+Blog post content
+
+=item C<link>
+
+Permanent URL of the blog post
+
+=item C<pubDate>
+
+Date when the blog post was published, in C<HTTP::Date> format,
+ex.: C<Sun, Nov 14 06:20:28 CET>.
+
+=item C<tags>
+
+Comma delimited string of tags (ex.: C<travel, holiday>)
+
+=item C<title>
+
+Title of the blog post
+
+=back
 
 =head2 C<mech()>
 
