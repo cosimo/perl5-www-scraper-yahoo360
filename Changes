@@ -1,5 +1,9 @@
 Revision history for Perl extension WWW::Scraper::Yahoo360.
 
+0.03  Sat May  9 14:15:28 2009
+	- added optional arguments for get_blog_posts() to be more flexible
+	- improved documentation
+
 0.02  Mon Apr 27 21:13:00 2009
     - better docs with a saner module description
 
