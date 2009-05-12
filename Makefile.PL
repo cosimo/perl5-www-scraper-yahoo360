@@ -4,6 +4,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     NAME              => 'WWW::Scraper::Yahoo360',
     VERSION_FROM      => 'lib/WWW/Scraper/Yahoo360.pm', # finds $VERSION
+	EXE_FILES         => ['bin/export-yahoo360-blog.pl'],
     PREREQ_PM         => {
         # e.g., Module::Name => 1.1
         'JSON::XS'       => 0,

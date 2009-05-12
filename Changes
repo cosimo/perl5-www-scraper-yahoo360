@@ -1,5 +1,11 @@
 Revision history for Perl extension WWW::Scraper::Yahoo360.
 
+0.04  Mon May 11 23:55:33 2009
+	- some blog posts could be parsed incorrectly, leading to
+	  truncated content. This is now fixed and test-covered.
+    - now the default export-yahoo360-blog.pl script is installed
+	  in your $PERL/bin folder. (EXE_FILES passed to WriteMakefile()).
+
 0.03  Sat May  9 14:15:28 2009
 	- added optional arguments for get_blog_posts() to be more flexible
 	- improved documentation

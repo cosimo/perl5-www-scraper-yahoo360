@@ -3,9 +3,7 @@
 
 #########################
 
-# change 'tests => 1' to 'tests => last_test_to_print';
-
-use Test::More tests => 17;
+use Test::More tests => 25;
 
 BEGIN {
     use_ok('WWW::Scraper::Yahoo360')
@@ -58,6 +56,56 @@ is(
     'Title of the blog is extracted correctly'
 );
 
+#
+# get_blog_posts() tests
+#
+my $posts = $y360->get_blog_posts($blog_page, start=>1, end=>2, count=>1);
+is(scalar @{$posts}, 5, 'Parsed 5 blog posts in the blog main page');
+
+my $first = $posts->[0];
+
+ok(
+	ref $first eq 'HASH',
+	'First blog post is a hashref'
+);
+
+ok(
+	$first->{title},
+	'Title is parsed correctly (' . $first->{title} . ')'
+);
+
+is(
+	$first->{comments}, 0,
+	'Number of comments is correct'
+);
+
+like(
+	$first->{tags},
+	qr{^myopera},
+	'Tags parsed correctly (' . $first->{tags} . ')'
+);
+
+like(
+	$first->{description},
+	qr{<img src="http://files\.myopera\.com/myfrenchopera/files/sitelanguage\.jpg"/></div>$},
+	'Blog post is not truncated'
+);
+
+is(
+	$first->{pubDate},
+	'Tue, 16 Dec 2008 13:11:00 GMT',
+	'Blog post date is parsed correctly'
+);
+
+like(
+	$first->{link},
+	qr{^http://blog\.360\.yahoo\.com/},
+	'Blog post link contains blog.360.yahoo.com',
+);
+
+#
+# get_blogpost_comments() tests
+#
 my $blogpost_page = File::Slurp::read_file(q{./t/blogpost_with_1_comment.html});
 my $comments = $y360->get_blogpost_comments(
     {link=>'http://360.yahoo.com/blah'}, # Pretend we have a link
