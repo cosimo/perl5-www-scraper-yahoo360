@@ -1,5 +1,21 @@
 Revision history for Perl extension WWW::Scraper::Yahoo360.
 
+0.07  Sun May 31 08:35:21 2009
+    - Added a debug mode with a global $DEBUG flag, and 
+      added a twin option --debug in the export-yahoo360-blog.pl script.
+    - Fixed parsing of pictures and random hangs (still hangs sometimes...)
+	- Fixed parsing of dates with 3-letter months (May, for example)
+    - Fixed parsing of sharing level when it's private
+    - Fixed failed tests (a test file was missing from MANIFEST)
+
+0.06  Wed May 27 21:15:11 2009
+    - Now blog post contents include the main picture (if any).
+	  Added new test cases.
+
+0.05  Tue May 26 08:53:17 2009
+    - login() method didn't report failures correctly. Not it's fixed.
+    - added a -verbose option to the export blog script.
+
 0.04  Mon May 11 23:55:33 2009
 	- some blog posts could be parsed incorrectly, leading to
 	  truncated content. This is now fixed and test-covered.

@@ -3,7 +3,7 @@
 
 #########################
 
-use Test::More tests => 25;
+use Test::More tests => 35;
 
 BEGIN {
     use_ok('WWW::Scraper::Yahoo360')
@@ -13,6 +13,9 @@ BEGIN {
 
 # Insert your test code below, the Test::More module is use()ed here so read
 # its man page ( perldoc Test::More ) for help writing this test script.
+
+# Enable debug mode
+# $WWW::Scraper::Yahoo360::DEBUG = 1;
 
 my $y360 = WWW::Scraper::Yahoo360->new({
     username => 'fake',
@@ -59,7 +62,7 @@ is(
 #
 # get_blog_posts() tests
 #
-my $posts = $y360->get_blog_posts($blog_page, start=>1, end=>2, count=>1);
+my $posts = $y360->get_blog_posts($blog_page, start=>1, end=>5, count=>5);
 is(scalar @{$posts}, 5, 'Parsed 5 blog posts in the blog main page');
 
 my $first = $posts->[0];
@@ -164,7 +167,9 @@ is (
 # Mon, 25 Aug 2008 12:28:00 GMT
 my @dates = (
     [ q{Monday August 25, 2008 - 05:28am (PDT)}, 1219667280 ],
-    [ q{Tuesday November 11, 2008 - 10:26pm (ICT)}, 1226373960 ],
+    [ q{Tuesday November 11, 2008 - 10:26pm (ICT)}, 1226417160 ],
+    [ q{Wednesday February 4, 2009 - 12:00pm (ICT)}, 1233723600 ],
+    [ q{Sunday May 24, 2009 - 12:27am (ICT)}, 1243099620 ],
 );
 
 for (@dates) {
@@ -175,4 +180,60 @@ for (@dates) {
         'Date {' . $date . '} is parsed correctly'
     );
 }
+
+# -----------------------------------------------------
+# A different page - parsing of blog posts and comments
+# -----------------------------------------------------
+
+$blog_page = File::Slurp::read_file(q{./t/blog2.html});
+$blog_info = $y360->blog_info($blog_page);
+#iag( JSON::XS->new->pretty->encode($blog_info) );
+
+is(
+    $blog_info->{title}, 'Test Blog',
+    'Title of blog extracted correctly'
+);
+
+is(
+    $blog_info->{sharing}, 'private',
+    'Blog sharing set to private should be parsed correctly',
+);
+
+
+$posts = $y360->get_blog_posts($blog_page, start=>1, end=>4, count=>4);
+is(scalar @{$posts}, 4, 'Parsed 4 blog posts in the alternative test page');
+my $post = $posts->[0];
+
+is(
+    $post->{title}, 'Entry for March 17, 2007',
+    'Title of post extracted correctly'
+);
+
+is(
+    $post->{link}, 'http://blog.360.yahoo.com/blog-cqkAz2HmPNV3F9wncqkA-?cq=1&p=5',
+    'Link to blog post extracted correctly'
+);
+
+# Check parsing of pictures
+unlike(
+    $post->{description},
+    qr{<img \s src=}mx,
+    'Picture is not added when not present',
+);
+
+# Blog post content should be just blog post, no empty newlines or <div>s for picture
+is(
+    $post->{description},
+    '<p>Chuyen sang ngoi nha moi</p> <p>http://my.opera.com/testuser2</p>',
+	'Blog post contents with no picture are extracted correctly',
+);
+
+$post = $posts->[3];
+like(
+    $post->{description},
+    qr{<img \s src=}mx,
+    'Picture is parsed correctly'
+);
+
+#iag( JSON::XS->new->pretty->encode($posts) );
 

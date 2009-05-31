@@ -19,7 +19,8 @@ use constant BLOG_URL   => q{http://blog.360.yahoo.com/blog/};
 use constant LOGIN_FORM => q{login_form};
 use constant LOGIN_URL  => q{https://login.yahoo.com/config/login_verify2?.intl=us&.done=http%3A%2F%2Fblog.360.yahoo.com%2Fblog%2F%3F.login%3D1&.src=360};
 
-our $VERSION = '0.04';
+our $DEBUG = 0;
+our $VERSION = '0.07';
 
 sub new {
     my ($class, $args) = @_;
@@ -33,22 +34,43 @@ sub blog_info {
     my ($self, $blog_page) = @_;
 
     if (! $blog_page) {
+        $self->debug('Fetching blog main page');
         $blog_page = $self->blog_main_page();
+        if (! $blog_page) {
+            $self->debug('Failed to fetch blog main page');
+            return;
+        }
     }
 
     # Get sharing level
-    #
     # <p class="footnote">Your blog can be seen by  <strong>Public</strong>
     #
+    # or:
+    # <p class="footnote">Your blog can be seen by  <strong>Just me (private)</strong>
+    # <p class="footnote">Your blog can be seen by  <strong>Friends</strong>
+    # 
     my $sharing = q{};
-    if ($blog_page =~ m{Your blog can be seen by  <strong>([\w\s]+)</strong>}m) {
-        $sharing = lc $1; 
+    if ($blog_page =~ m{Your blog can be seen by  <strong>([\w\(\)\s]+)</strong>}m) {
+
+        $sharing = lc $1;
+        if ($sharing =~ m{just me}) {
+            $sharing = 'private';
+        }
+        elsif ($sharing =~ m{friend}) {
+            $sharing = 'friends';
+        }
+
+        $self->debug('Blog sharing found to be "', $sharing, '"');
+    }
+    else {
+        $self->debug('Blog sharing string not found');
     }
 
     # Get title
     my $title = q{};
     if ($blog_page =~ m{<h3>([^<]+)<span class="view-toggle">Full Post View}m) {
         $title = $1;
+        $self->debug('Blog title found to be "', $title, '"');
     }
 
     # Get number of posts
@@ -62,11 +84,19 @@ sub blog_info {
         $start = $1;
         $end   = $2;
         $count = $3;
+        $self->debug('Blog post counts found. Start:', $start, ' End:', $end, ' Count:', $count);
+    }
+    else {
+        $self->debug('Blog post counts not found');
     }
 
     my $link = q{};
     if ($blog_page =~ m{<a href="([^"]+)" class="selected">My Blog</a>}) {
         $link = $1;
+        $self->debug('Blog URL found: ', $link);
+    }
+    else {
+        $self->debug('Blog URL not found');
     }
 
     $title =~ s{^\s+}{};
@@ -88,11 +118,16 @@ sub blog_info {
 # Fetches the user's main blog page
 sub blog_main_page {
     my ($self) = @_;
+
     my $mech = $self->mech();
     $mech->get(BLOG_URL);
+
     if ($mech->success()) {
+        $self->debug('Blog main page downloaded successfully');
         return $mech->content();
     }
+
+    $self->debug('Blog main page download failed');
     Carp::croak("Failed to retrieve blog main page");
 }
 
@@ -107,6 +142,15 @@ sub blog_page_url {
     $url .= '&mx=' . $count;
     $url .= '&lmt=' . $per_page;
     return $url;
+}
+
+sub debug {
+    return unless $DEBUG;
+
+    my ($self, @msg) = @_;
+    print STDERR @msg, "\n";
+
+    return;
 }
 
 # Logs in to Yahoo
@@ -130,7 +174,23 @@ sub login {
         button    => '.save',
     );
 
-    return $mech->success();
+    # Not sure how to make this more robust
+    my $next_page = $mech->content();
+    if ($next_page =~ m{Invalid ID or password}) {
+        $self->debug('Login to Yahoo service failed for user "', $user, '"');
+        return;
+    }
+
+    my $ok = $mech->success();
+
+    if ($ok) {
+        $self->debug('Login to Yahoo service succeeded');
+    }
+    else {
+        $self->debug('Login to Yahoo service failed. Unknown reason?');
+    }
+
+    return $ok;
 }
 
 # Dumps last accessed page content to STDOUT
@@ -153,12 +213,14 @@ sub get_blog_comments {
 
         # No comments, don't fetch them
         if ($post->{comments} == 0) {
+            $self->debug('No comments for post ', $post->{title});
             next;
         }
 
         #print qq{Found $post->{comments} comments for blog post "$post->{title}"\n};
 
         if (my $post_comm = $self->get_blogpost_comments($post)) {
+            $self->debug('Got ', scalar(@{ $post_comm }), ' comments for post ', $post->{title});
             push @comments, @{ $post_comm };
         }
 
@@ -209,8 +271,15 @@ sub get_blogpost_comments {
             $comment->{date} = $self->parse_date($comment->{date});
         }
 
+        $self->debug(
+            'Found comment "', $comment->{comment},
+            '" by "', $comment->{username}, '"'
+        );
+
         push @comments, $comment;
     }
+
+    $self->debug('Found ', scalar(@comments), ' comments to blog post ', $post->{link});
 
     return \@comments;
 }
@@ -236,10 +305,14 @@ sub get_blog_posts {
 
     for (my $n = $start; $n < $start + $count; ) {
 
-        #print "Reading post n. $n\n";
+        $self->debug(
+            'Reading post n. ', $n,
+            ' end_of_page:', $end,
+            ' end_of_blog:', ($start + $count)
+        );
 
         # Fetch next page and continue
-        if ($n >= $end) {
+        if ($n >= $end && $end < ($start + $count)) {
 
             my $next_page_url = $self->blog_page_url(
                 $link, $end + 1, $per_page, $count
@@ -248,11 +321,11 @@ sub get_blog_posts {
             $end += $per_page;
 
             $self->mech->get($next_page_url);
-            #warn "Next url is: $next_page_url\n";
+            $self->debug('Next url is:', $next_page_url);
 
             $blog_page = $self->mech->content();
             if (! $blog_page) {
-                warn "Failed to read url: $next_page_url\n";
+                $self->debug('Failed to read url: ', $next_page_url);
                 last;
             }
 
@@ -262,38 +335,53 @@ sub get_blog_posts {
            
             # Blog post title 
             my $title = $1;
-            my $post = { title => $1 };
+            my $post = {
+                title => $1,
+                description => ''
+            };
 
-            #print "    [$n] Title: $title\n";
+            $self->debug('Found new blog post "', $title, '" (', $n, ')');
+
+            # Main picture of the blog post
+            if ($blog_page =~ m{<div class="image-wrapper">(.*?)</div>}gsmc) {
+                my $pic = $1;
+                $pic =~ s{^\s*}{}mx;
+                $pic =~ s{\s*$}{}mx;
+                if ($pic) {
+                    $post->{description} = '<div align="center">' . $pic . '</div>';
+                    $self->debug('    Image: ', substr($pic, 0, 30), '...');
+                }
+            }
 
             # Blog post content
             # Read until the end of line (there might be multiple <div>s)
-            if ($blog_page =~ m{<div class="content-wrapper">(.*)</div>$}gm) {
-                $post->{description} = $1;
-                #print "    [$n] Body: ", substr($1, 0, 30), '... ', "\n";
+            if ($blog_page =~ m{<div class="content-wrapper">(.*)</div>}gmc) {
+                $post->{description} .= $1;
+                $self->debug('    Content: ', substr($1, 0, 30), '...');
             }
 
             # Tags
             if ($blog_page =~ m{<form><input type="hidden" name="tagslist" value="([^"]*)"}gm) {
                 $post->{tags} = $1;
-                #print "    [$n] Tags: $1\n";
+                $self->debug('    Tags: ', $1);
             }
 
             # Date of post
             if ($blog_page =~ m{<span>([^<]+)<a href="[^"]+">Edit</a>}gm) {
                 $post->{pubDate} = HTTP::Date::time2str($self->parse_date($1));
-                #print "    [$n] Date: $1\n";
+                $self->debug('    Date: ', $1);
             }
 
             # Permanent link
             if ($blog_page =~ m{<a href="([^"]+)">Permanent Link</a>}gm) {
                 $post->{link} = $1;
-                #print "    [$n] Permalink: $1\n";
+                $self->debug('    Permalink: ', $1);
             }
 
             # No. of comments
             if ($blog_page =~ m{<a href="[^"]+">(\d+) Comments?</a>}gm) {
                 $post->{comments} = $1;
+                $self->debug('    Comments: ', $1);
             }
 
             push @posts, $post;
@@ -324,7 +412,7 @@ sub parse_date {
     $date =~ s{^\s+}{};
     $date =~ s{\s+$}{};
 
-    if ($date =~ m{^ (\w{3})\w+ \s (\w{3})\w+ \s (\d+), \s (\d+) \s - \s (\d+):(\d+)([ap]m) \s \((.*)\) \s* $}x) {
+    if ($date =~ m{^ (\w{3})\w+ \s (\w{3})\w* \s (\d+), \s (\d+) \s - \s (\d+):(\d+)([ap]m) \s \((.*)\) \s* $}x) {
         my $dow   = $1;
         my $month = $2;
         my $day   = $3;
@@ -339,20 +427,29 @@ sub parse_date {
             $tz = 'UTC+07';
         }
 
-        if ($ampm eq 'pm') {
+        if ($ampm eq 'AM' && $hours == 12) {
+            $hours = 0;
+        }
+        elsif ($ampm eq 'PM' && $hours != 12) {
             $hours += 12;
-            if ($hours > 23) { $hours -= 24 }
+            if ($hours > 23) {
+                $hours -= 24;
+            }
         }
 
         my $time = "$hours:$mins:00";
 
         # Wed, 16 Jun 94 07:29:35 CST
         $date = "$day $month $year $time $tz"; 
+
+        #arn "# Converted to [$date]\n";
+
     }
 
-    $date = Date::Parse::str2time($date);
+    my $epoch = Date::Parse::str2time($date);
+    #arn "# str2time($date) returns ($epoch)\n";
 
-    return $date;
+    return $epoch;
 }
 
 1;
@@ -371,6 +468,9 @@ WWW::Scraper::Yahoo360 - Yahoo 360 blogs old-fashioned crappy scraper
       username => 'myusername',
       password => 'mypassword',
   });
+
+  # Debug what's happening?
+  $WWW::Scraper::Yahoo360::DEBUG = 1;
 
   # First you have to login
   $y360->login() or die "Login failed?";
