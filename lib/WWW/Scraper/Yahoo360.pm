@@ -19,8 +19,8 @@ use constant BLOG_URL   => q{http://blog.360.yahoo.com/blog/};
 use constant LOGIN_FORM => q{login_form};
 use constant LOGIN_URL  => q{https://login.yahoo.com/config/login_verify2?.intl=us&.done=http%3A%2F%2Fblog.360.yahoo.com%2Fblog%2F%3F.login%3D1&.src=360};
 
-our $DEBUG = 0;
-our $VERSION = '0.07';
+our $DEBUG   = 0;
+our $VERSION = '0.08';
 
 sub new {
     my ($class, $args) = @_;
@@ -288,7 +288,17 @@ sub get_blogpost_comments {
 sub get_blog_posts {
     my ($self, $blog_page, %overrides) = @_;
 
-    $blog_page ||= $self->blog_main_page();
+    $self->debug("Start parsing of blog posts");
+
+    if (! $blog_page) {
+        $self->debug("Downloading of main blog page");
+        $blog_page ||= $self->blog_main_page();
+        $self->debug("Download complete");
+    }
+    else {
+        $self->debug("Blog main page was already supplied. No need to download.");
+    }
+
     my $blog_info = $self->blog_info($blog_page);
 
     for (keys %overrides) {
@@ -297,28 +307,31 @@ sub get_blog_posts {
 
     my $link  = $blog_info->{link};
     my $start = $blog_info->{start};
-    my $end   = $blog_info->{end};
     my $count = $blog_info->{count};
-    my $per_page = $end - $start + 1;
+    my $end_page = $blog_info->{end};
+    my $end_blog = $start + $count - 1;
+    my $per_page = $end_page - $start + 1;
 
     my @posts = ();
 
-    for (my $n = $start; $n < $start + $count; ) {
+    $self->debug("Parsing posts ($start .. $end_blog)");
+
+    for (my $n = $start; $n <= $end_blog; ) {
 
         $self->debug(
             'Reading post n. ', $n,
-            ' end_of_page:', $end,
-            ' end_of_blog:', ($start + $count)
+            ' end_of_page:', $end_page,
+            ' end_of_blog:', $end_blog,
         );
 
         # Fetch next page and continue
-        if ($n >= $end && $end < ($start + $count)) {
+        if ($n >= $end_page && $end_page < $end_blog) {
 
             my $next_page_url = $self->blog_page_url(
-                $link, $end + 1, $per_page, $count
+                $link, $end_page + 1, $per_page, $count
             );
 
-            $end += $per_page;
+            $end_page += $per_page;
 
             $self->mech->get($next_page_url);
             $self->debug('Next url is:', $next_page_url);

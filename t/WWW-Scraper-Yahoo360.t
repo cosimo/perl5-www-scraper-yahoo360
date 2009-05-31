@@ -1,18 +1,10 @@
-# Before `make install' is performed this script should be runnable with
-# `make test'. After `make install' it should work as `perl WWW-Scraper-Yahoo360.t'
+# $Id$
 
-#########################
-
-use Test::More tests => 35;
+use Test::More tests => 40;
 
 BEGIN {
     use_ok('WWW::Scraper::Yahoo360')
 }
-
-#########################
-
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
 
 # Enable debug mode
 # $WWW::Scraper::Yahoo360::DEBUG = 1;
@@ -26,6 +18,8 @@ my $y360 = WWW::Scraper::Yahoo360->new({
 # ---------------------------------------------------
 # Parsing of blog posts and comments
 # ---------------------------------------------------
+
+diag("Parsing a standard blog page");
 
 my $blog_page = File::Slurp::read_file(q{./t/blog.html});
 my $blog_info = $y360->blog_info($blog_page);
@@ -147,6 +141,8 @@ is (
 # Parsing of a blog post with many comments
 # ---------------------------------------------------
 
+diag("Parsing a blog page with many comments");
+
 $blogpost_page = File::Slurp::read_file(q{./t/blogpost_with_many_comments.html});
 $comments = $y360->get_blogpost_comments({}, $blogpost_page);
 
@@ -163,6 +159,8 @@ is (
 # ---------------------------------------------------
 # Parsing of dates
 # ---------------------------------------------------
+
+diag("Parsing of dates");
 
 # Mon, 25 Aug 2008 12:28:00 GMT
 my @dates = (
@@ -184,6 +182,8 @@ for (@dates) {
 # -----------------------------------------------------
 # A different page - parsing of blog posts and comments
 # -----------------------------------------------------
+
+diag("Parsing of alternative blog page");
 
 $blog_page = File::Slurp::read_file(q{./t/blog2.html});
 $blog_info = $y360->blog_info($blog_page);
@@ -236,4 +236,51 @@ like(
 );
 
 #iag( JSON::XS->new->pretty->encode($posts) );
+
+
+# -----------------------------------------------------
+# Page that used to hang, only 1 blog post
+# -----------------------------------------------------
+
+diag("Parsing of page with just 1 blog post");
+
+$blog_page = File::Slurp::read_file(q{./t/blog3.html});
+$blog_info = $y360->blog_info($blog_page);
+#iag( JSON::XS->new->pretty->encode($blog_info) );
+
+is(
+    $blog_info->{title}, 'Hang test',
+    'Title of blog extracted correctly when page has only 1 post'
+);
+
+is(
+    $blog_info->{sharing}, 'public',
+    'Blog sharing parsed correctly when page has only 1 post'
+);
+
+# Catch infinite loop parsing regressions
+eval {
+    local $SIG{ALRM} = sub { die "timeout\n" };
+    alarm 5;
+    $posts = $y360->get_blog_posts($blog_page, start=>1, end=>1, count=>1);
+    alarm 0;
+};
+if ($@) {
+    ok(0, "Regression: get_blog_posts() should not hang when there's only 1 blog post");
+}
+else {
+    is(scalar @{$posts}, 1, 'Parsed 1 blog post page correctly');
+}
+
+$post = $posts->[0];
+
+is(
+    $post->{title}, 'Blog chuyển sang Opera!',
+    'Title of post extracted correctly'
+);
+
+is(
+    $post->{link}, 'http://blog.360.yahoo.com/blog-w7QmVu4cfGV4rfrQdjX5O6--?cq=1&p=1',
+    'Link to blog post extracted correctly'
+);
 
